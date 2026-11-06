@@ -65,6 +65,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  consumer:
+    build: ./consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_TOPIC: usgs.live
+      KAFKA_GROUP: consumidor-live
+      CATALOG_PATH: /data/paises.geojson
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./frontend/public/datos:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
   kafka-data:
