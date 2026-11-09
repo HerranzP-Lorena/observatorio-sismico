@@ -1,0 +1,2 @@
+SELECT 'jul top: mag=' || mag || ' | ' || place || ' | ' || to_char(time_utc at time zone 'UTC','YYYY-MM-DD') FROM evento_actual WHERE time_utc >= '2025-07-01' AND time_utc < '2025-08-01' ORDER BY mag DESC LIMIT 3;
+SELECT 'rusia/kamchat mes=' || mes || ' n=' || n FROM (SELECT to_char(time_utc at time zone 'UTC','YYYY-MM') AS mes, count(*) AS n FROM evento_actual WHERE (place ILIKE '%Kamchat%' OR place ILIKE '%Russia%') AND time_utc >= '2025-01-01' AND time_utc < '2026-01-01' GROUP BY 1) t ORDER BY mes;
