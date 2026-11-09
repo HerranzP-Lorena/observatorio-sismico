@@ -144,6 +144,20 @@ async def publish_new(db, producer, data):
     log(f"Feed: {len(features)} eventos | publicados {sent} | ya publicados {skipped} | sin id/updated {invalid}")
 
 
+async def ensure_db(db):
+    """Comprueba que la conexion sigue viva; si no, abre una nueva (con reintentos)."""
+    try:
+        await db.execute("SELECT 1")  # consulta trivial: si responde, la conexion esta viva
+        return db
+    except Exception:
+        log("Conexion con PostgreSQL perdida; reconectando...")
+        try:
+            await db.close()
+        except Exception:
+            pass
+        return await connect_db()  # reintenta hasta 30 veces
+
+
 async def main():
     db = await connect_db()
     producer = await start_kafka()
@@ -158,6 +172,7 @@ async def main():
                         await publish_new(db, producer, data)
                 except Exception as e:  # un fallo de ciclo no debe parar el productor
                     log(f"Error en el ciclo: {e!r}")
+                    db = await ensure_db(db)  # si la causa fue la base, reconecta
                 elapsed = asyncio.get_event_loop().time() - started
                 await asyncio.sleep(max(1, POLL_SECONDS - elapsed))
         finally:
@@ -167,3 +182,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
