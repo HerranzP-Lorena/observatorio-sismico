@@ -1,0 +1,194 @@
+{
+ "anio": 2025,
+ "filtros": {
+  "minmagnitude": "4",
+  "eventtype": "earthquake",
+  "ambito": "mundial"
+ },
+ "fuente": "https://earthquake.usgs.gov/fdsnws/event/1/query",
+ "meses": [
+  {
+   "mes": "2025-01",
+   "extraido_en": "2026-11-09T17:19:59.788817+00:00",
+   "n_registros": 1413,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-01-01T00:00:00Z&endtime=2025-02-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:19:57.808844+00:00",
+     "http_status": 200,
+     "n_records": 1413,
+     "error": null
+    }
+   ],
+   "sha256": "02f4e7f6ee7b43b20ab2caafdd8c10cfd3f4c01a0eb6a45b076c90b5c1339e88"
+  },
+  {
+   "mes": "2025-02",
+   "extraido_en": "2026-11-09T17:20:01.906915+00:00",
+   "n_registros": 1394,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-02-01T00:00:00Z&endtime=2025-03-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:19:59.833509+00:00",
+     "http_status": 200,
+     "n_records": 1394,
+     "error": null
+    }
+   ],
+   "sha256": "2090cdba0bd612c66e81cd55d9dd66a9916335a47223fcfabd389c4767854c5d"
+  },
+  {
+   "mes": "2025-03",
+   "extraido_en": "2026-11-09T17:20:05.309400+00:00",
+   "n_registros": 1178,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-03-01T00:00:00Z&endtime=2025-04-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:01.934627+00:00",
+     "http_status": 200,
+     "n_records": 1178,
+     "error": null
+    }
+   ],
+   "sha256": "1e82695beeca5a33612fc4f6e9e99c85a89550f2fca52b1a88ef3f0adfbd6ce2"
+  },
+  {
+   "mes": "2025-04",
+   "extraido_en": "2026-11-09T17:20:07.399756+00:00",
+   "n_registros": 1316,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-04-01T00:00:00Z&endtime=2025-05-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:05.369421+00:00",
+     "http_status": 200,
+     "n_records": 1316,
+     "error": null
+    }
+   ],
+   "sha256": "ff8650253d0d665c66ff698de2e2434d6e86f394aea18c8192139ec014763566"
+  },
+  {
+   "mes": "2025-05",
+   "extraido_en": "2026-11-09T17:20:09.253563+00:00",
+   "n_registros": 1228,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-05-01T00:00:00Z&endtime=2025-06-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:07.419009+00:00",
+     "http_status": 200,
+     "n_records": 1228,
+     "error": null
+    }
+   ],
+   "sha256": "da29837c30da514c2ba9839603eab8da0158d7062194e5f0b8286b6c55fd24f8"
+  },
+  {
+   "mes": "2025-06",
+   "extraido_en": "2026-11-09T17:20:10.892606+00:00",
+   "n_registros": 1156,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-06-01T00:00:00Z&endtime=2025-07-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:09.280911+00:00",
+     "http_status": 200,
+     "n_records": 1156,
+     "error": null
+    }
+   ],
+   "sha256": "fb6c36e749e0f676a991f0613236a00e700cc21be31a9e725824b97f5990f578"
+  },
+  {
+   "mes": "2025-07",
+   "extraido_en": "2026-11-09T17:20:12.708904+00:00",
+   "n_registros": 2684,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-07-01T00:00:00Z&endtime=2025-08-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:10.916275+00:00",
+     "http_status": 200,
+     "n_records": 2684,
+     "error": null
+    }
+   ],
+   "sha256": "7aa025579221b44c0face541531c2b338104f5c0b0e63bdc007c1bced309d730"
+  },
+  {
+   "mes": "2025-08",
+   "extraido_en": "2026-11-09T17:20:14.904678+00:00",
+   "n_registros": 2222,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-08-01T00:00:00Z&endtime=2025-09-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:12.751933+00:00",
+     "http_status": 200,
+     "n_records": 2222,
+     "error": null
+    }
+   ],
+   "sha256": "a3f709e1cb1c01e1ad22e31ba8e29fb0650af7ccc8375eb70be853238476e2e3"
+  },
+  {
+   "mes": "2025-09",
+   "extraido_en": "2026-11-09T17:20:16.485771+00:00",
+   "n_registros": 1604,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-09-01T00:00:00Z&endtime=2025-10-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:14.931774+00:00",
+     "http_status": 200,
+     "n_records": 1604,
+     "error": null
+    }
+   ],
+   "sha256": "91cac1e441d6f9daaca9aa8d03e81f60cf114176432b975ef0ccb13d3ec1cc90"
+  },
+  {
+   "mes": "2025-10",
+   "extraido_en": "2026-11-09T17:20:18.491606+00:00",
+   "n_registros": 1509,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-10-01T00:00:00Z&endtime=2025-11-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:16.515253+00:00",
+     "http_status": 200,
+     "n_records": 1509,
+     "error": null
+    }
+   ],
+   "sha256": "1313112984a5dc8f461b006595d5a31571840cec7953da36e81c39a440b9582c"
+  },
+  {
+   "mes": "2025-11",
+   "extraido_en": "2026-11-09T17:20:20.457715+00:00",
+   "n_registros": 1321,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-11-01T00:00:00Z&endtime=2025-12-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:18.545425+00:00",
+     "http_status": 200,
+     "n_records": 1321,
+     "error": null
+    }
+   ],
+   "sha256": "84c5e069ed73f993213226a9329c658b99e1d8154bdb7936e275dc3c76fe2c8d"
+  },
+  {
+   "mes": "2025-12",
+   "extraido_en": "2026-11-09T17:20:21.902267+00:00",
+   "n_registros": 1277,
+   "consultas": [
+    {
+     "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2025-12-01T00:00:00Z&endtime=2026-01-01T00:00:00Z&minmagnitude=4&eventtype=earthquake&orderby=time-asc",
+     "requested_at": "2026-11-09T17:20:20.479578+00:00",
+     "http_status": 200,
+     "n_records": 1277,
+     "error": null
+    }
+   ],
+   "sha256": "b02dad3209d0c293a7d8bfb031fb8fd62d4f18cb320644e7f7d44487cf190b1b"
+  }
+ ],
+ "total_bruto": 18302,
+ "total_unicos": 18302,
+ "duplicados_entre_intervalos": 0
+}

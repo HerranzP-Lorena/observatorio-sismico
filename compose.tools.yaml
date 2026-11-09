@@ -1,0 +1,16 @@
+# Herramienta de carga del historico. NO forma parte de los 5 servicios del sistema.
+# Uso: docker compose -f compose.yaml -f compose.tools.yaml run --rm historico python /historico/historico.py descargar
+services:
+  historico:
+    build: ./producer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_TOPIC: usgs.live
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      HIST_YEAR: "2025"
+      HIST_MINMAG: "4"
+    volumes:
+      - ./historico:/historico
