@@ -94,7 +94,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      CORS_ORIGINS: http://localhost:4200
+      CORS_ORIGINS: http://localhost:4200,https://grand-daffodil-bb905c.netlify.app
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/salud', timeout=3)"]
       interval: 15s
