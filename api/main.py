@@ -355,7 +355,7 @@ async def estadisticas(
                      "otros": {"n_paises": len(resto), "n": sum(p["n"] for p in resto)}, "datos": paises},
         "magnitud": {"unidad": "terremotos por tramo de magnitud", "filtros": filtros, "periodo": periodo,
                      "sin_valor": sin_mag,
-                     "nota": "sin_valor = eventos sin magnitud que cumplen el resto de filtros (con min_mag no entran en los tramos).",
+                     "nota": "Eventos sin magnitud que cumplen el resto de filtros. Con una magnitud mínima activa no entran en los tramos, pero se siguen contando aquí.",
                      "datos": histograma(fm, TRAMOS_MAG)},
         "profundidad": {"unidad": "terremotos por tramo de profundidad (km)", "filtros": filtros, "periodo": periodo,
                         "sin_valor": fp["sin_valor"], "datos": histograma(fp, TRAMOS_PROF)},

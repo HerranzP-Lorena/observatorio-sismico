@@ -1,6 +1,130 @@
 <main>
-  <header><p class="eyebrow">BIG DATA · PROYECTO DE AULA</p><h1>Observatorio de actividad sísmica</h1><p>Mapa base, fronteras y eventos en capas independientes.</p></header>
-  <section class="info" aria-live="polite"><strong>{{ mode() }}</strong><p>{{ status() }}</p><p>{{ countriesStatus() }} · {{ count() }} eventos dibujados · {{ omitted() }} omitidos por coordenadas inválidas</p><small>Última lectura UTC: {{ lastRead() }}<br>Generación de la respuesta UTC: {{ generated() }}</small></section>
+  <header>
+    <p class="eyebrow">BIG DATA · PROYECTO DE AULA</p>
+    <h1>Observatorio de actividad sísmica</h1>
+    <p>Terremotos de USGS procesados con Kafka y PostgreSQL. Estadísticas descriptivas, no una predicción ni una evaluación de riesgo.</p>
+  </header>
+
+  <!-- ESTADO DEL SISTEMA: ultimo acceso a la API, ultima ingesta de USGS, periodo y avisos -->
+  <section class="info" aria-live="polite" aria-label="Estado del sistema">
+    <strong>{{ mode() }}</strong>
+    @if (backendError(); as e) { <p class="alert error" role="alert">⚠ {{ e }}</p> }
+    @if (stale(); as s) { <p class="alert warn" role="status">⏱ {{ s }}</p> }
+    @if (truncatedMsg(); as t) { <p class="alert warn" role="status">✂ {{ t }}</p> }
+    <p>{{ status() }}</p>
+    <p>{{ countriesStatus() }} · {{ count() }} eventos dibujados · {{ omitted() }} omitidos por coordenadas inválidas</p>
+    <dl class="estado">
+      <div><dt>Último acceso correcto a la API (UTC)</dt><dd>{{ lastRead() }}</dd></div>
+      <div><dt>Última ingesta correcta de USGS (UTC)</dt><dd>{{ lastIngestion() }}</dd></div>
+      <div><dt>Respuesta generada por la API (UTC)</dt><dd>{{ generated() }}</dd></div>
+      <div><dt>Periodo y filtros consultados</dt><dd>{{ periodText() }}</dd></div>
+    </dl>
+  </section>
+
+  <!-- FILTROS: los mismos valores se envian a /api/eventos (mapa y tabla) y a /api/estadisticas (graficos) -->
+  <form class="filtros" aria-label="Filtros" (submit)="$event.preventDefault(); apply(fs.value, fe.value, mm.value, cc.value)">
+    <label>Desde (UTC) <input #fs type="date"></label>
+    <label>Hasta (UTC, incluido) <input #fe type="date"></label>
+    <label>Magnitud mínima <input #mm type="number" step="0.1" min="-2" max="10" placeholder="sin filtro"></label>
+    <label>País
+      <select #cc>
+        <option value="">Todos</option>
+        <option value="NONE">Sin país asignado</option>
+        @for (c of countries(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+      </select>
+    </label>
+    <button type="submit">Aplicar filtros</button>
+    <small>Sin fechas: últimas 24 horas. Los eventos sin magnitud no cumplen un filtro de magnitud mínima y se cuentan aparte.</small>
+  </form>
+
   <div class="map" leaflet [leafletOptions]="options" (leafletMapReady)="onMapReady($event)" aria-label="Mapa interactivo de terremotos"></div>
-  <footer><strong>Profundidad</strong><span>🟡 Menos de 70 km</span><span>🟠 70–299,99 km</span><span>🟣 300 km o más</span><span>⚪ No disponible</span><p>Tamaño: escala visual creciente con la magnitud; no representa energía ni área afectada. Sin magnitud: radio mínimo. El mapa base puede desactivarse en el selector de capas.</p><p>Base proporcionada: añade filtros, gráficos, tabla accesible y conclusiones para completar el proyecto.</p></footer>
+  <footer>
+    <strong>Profundidad</strong><span>🟡 Menos de 70 km</span><span>🟠 70–299,99 km</span><span>🟣 300 km o más</span><span>⚪ ND (no disponible)</span>
+    <p>Tamaño: escala visual creciente con la magnitud; no representa energía ni área afectada. Sin magnitud (ND): radio mínimo. El mapa base puede desactivarse en el selector de capas.</p>
+  </footer>
+
+  <!-- ANALISIS: cada grafico es una lista de barras con el numero escrito, asi se entiende sin ver colores -->
+  <h2>Análisis con los mismos filtros</h2>
+  @if (statsError(); as se) { <p class="alert error" role="alert">⚠ {{ se }}</p> }
+  @if (stats(); as s) {
+    <p class="nota">Calculado desde la tabla de estado actual (una fila por terremoto: las revisiones de USGS no se cuentan dos veces). {{ s.metadata.aviso }}</p>
+    <div class="grid">
+
+      <section class="card" aria-labelledby="t-hist">
+        <h3 id="t-hist">Comparación histórica</h3>
+        @let h = s.comparacion_historica;
+        <p class="big">{{ fmt(h.ultimas_24h) }} <span>terremotos de magnitud ≥ {{ h.filtros.min_mag }} en las últimas 24 h</span></p>
+        <p class="big">{{ h.media_diaria_historica === null ? 'ND' : fmt(h.media_diaria_historica) }} <span>de media diaria en el año histórico ({{ h.periodo_historico.dias }} días, con los mismos filtros de país y magnitud)</span></p>
+        <p class="big">{{ h.ratio === null ? 'ND' : h.ratio }} <span>veces la media diaria histórica</span></p>
+        <p class="nota">País: {{ h.filtros.country_id ?? 'todos' }}. Sin magnitud en las últimas 24 h: {{ h.ultimas_24h_sin_magnitud }} (no comparables). {{ h.aviso }}</p>
+      </section>
+
+      <section class="card" aria-labelledby="t-hora">
+        <h3 id="t-hora">Terremotos por hora UTC (hora del evento)</h3>
+        @if (s.por_hora.aviso; as av) { <p class="alert warn">{{ av }}</p> }
+        @let mh = maxN(s.por_hora.datos);
+        <ul class="bars scroll">
+          @for (x of s.por_hora.datos; track x.hora) {
+            <li><span class="lbl">{{ x.hora.slice(5, 10) }} {{ x.hora.slice(11, 16) }}{{ x.parcial ? ' (en curso)' : '' }}</span>
+              <span class="bar"><i [style.width.%]="pct(x.n, mh)"></i></span><b>{{ x.n }}</b></li>
+          }
+        </ul>
+      </section>
+
+      <section class="card" aria-labelledby="t-pais">
+        <h3 id="t-pais">Terremotos por país</h3>
+        @let mp = maxN(s.por_pais.datos);
+        <ul class="bars">
+          @for (x of s.por_pais.datos; track x.country_id ?? 'NONE') {
+            <li [class.sinpais]="x.country_id === null"><span class="lbl">{{ x.country_name }}</span>
+              <span class="bar"><i [style.width.%]="pct(x.n, mp)"></i></span><b>{{ x.n }}</b></li>
+          }
+          @if (s.por_pais.otros.n_paises > 0) {
+            <li><span class="lbl">Otros ({{ s.por_pais.otros.n_paises }} países)</span><span class="bar"><i [style.width.%]="pct(s.por_pais.otros.n, mp)"></i></span><b>{{ s.por_pais.otros.n }}</b></li>
+          }
+        </ul>
+        <p class="nota">Sin país asignado: {{ s.por_pais.sin_pais_asignado }}. El catálogo de países es de baja resolución (1:110 m): epicentros en el mar o en costas e islas pequeñas quedan sin país.</p>
+      </section>
+
+      <section class="card" aria-labelledby="t-mag">
+        <h3 id="t-mag">Distribución de magnitud</h3>
+        @let mm2 = maxN(s.magnitud.datos);
+        <ul class="bars">
+          @for (x of s.magnitud.datos; track x.tramo) {
+            <li><span class="lbl">{{ x.tramo }}</span><span class="bar"><i [style.width.%]="pct(x.n, mm2)"></i></span><b>{{ x.n }}</b></li>
+          }
+        </ul>
+        <p class="nota"><strong>Sin magnitud (ND): {{ s.magnitud.sin_valor }}</strong>. {{ s.magnitud.nota }}</p>
+      </section>
+
+      <section class="card" aria-labelledby="t-prof">
+        <h3 id="t-prof">Distribución de profundidad</h3>
+        @let mpf = maxN(s.profundidad.datos);
+        <ul class="bars">
+          @for (x of s.profundidad.datos; track x.tramo) {
+            <li><span class="lbl">{{ x.tramo }}</span><span class="bar"><i [style.width.%]="pct(x.n, mpf)"></i></span><b>{{ x.n }}</b></li>
+          }
+        </ul>
+        <p class="nota"><strong>Sin profundidad (ND): {{ s.profundidad.sin_valor }}</strong>.</p>
+      </section>
+    </div>
+  }
+
+  <!-- TABLA: alternativa al mapa y al color. Misma informacion, en texto -->
+  <h2>Tabla de eventos</h2>
+  <p class="nota">Misma selección que el mapa. {{ rows().length }} eventos; se muestran {{ shown() < rows().length ? shown() : rows().length }}. Ordenados del más reciente al más antiguo.</p>
+  <div class="tabla" role="region" aria-label="Tabla de eventos" tabindex="0">
+    <table>
+      <caption class="sr">Terremotos del periodo y filtros seleccionados</caption>
+      <thead><tr><th scope="col">Fecha UTC</th><th scope="col">Magnitud</th><th scope="col">Profundidad</th><th scope="col">País</th><th scope="col">Lugar</th><th scope="col">ID</th></tr></thead>
+      <tbody>
+        @for (r of rows().slice(0, shown()); track r.id) {
+          <tr><td>{{ r.fecha }}</td><td>{{ r.mag }}</td><td>{{ r.prof }}</td><td>{{ r.pais }}</td><td>{{ r.lugar }}</td><td>{{ r.id }}</td></tr>
+        } @empty {
+          <tr><td colspan="6">No hay eventos con estos filtros.</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (shown() < rows().length) { <button type="button" class="mas" (click)="more()">Mostrar 100 más</button> }
 </main>
