@@ -186,3 +186,189 @@ async def eventos(
         },
         "features": features,
     }
+
+
+# ======================================================================================
+#  /api/estadisticas  -  numeros para los graficos del panel
+#  Se calcula SIEMPRE desde evento_actual (un registro por terremoto, su ultima version),
+#  asi una revision de USGS no cuenta dos veces.
+# ======================================================================================
+MAX_HORAS = 744          # 31 dias x 24 h: maximo de barras que devuelve "por_hora"
+HIST_ANYO = int(os.environ.get("HIST_YEAR", "2025"))   # anyo cargado como historico
+HIST_UMBRAL = 4.0        # el historico se descargo con magnitud >= 4 (minmagnitude=4)
+
+# Tramos de los histogramas: (nombre, desde incluido, hasta excluido). None = sin limite.
+TRAMOS_MAG = [("menos de 2", None, 2), ("2 a 3", 2, 3), ("3 a 4", 3, 4),
+              ("4 a 5", 4, 5), ("5 a 6", 5, 6), ("6 o mas", 6, None)]
+TRAMOS_PROF = [("sobre el nivel del mar (<0)", None, 0), ("0 a 10 km", 0, 10), ("10 a 70 km", 10, 70),
+               ("70 a 300 km", 70, 300), ("300 km o mas", 300, None)]
+
+
+def sql_tramos(columna, tramos):
+    # Construye "count(*) FILTER (WHERE ...) AS t0, ..." para contar cuantos eventos caen en cada tramo.
+    # Los numeros salen de las constantes de arriba (no del usuario), por eso es seguro escribirlos en el SQL.
+    # Un NULL no cumple ninguna comparacion, asi que nunca cae en un tramo (se cuenta aparte).
+    partes = []
+    for i, (_, lo, hi) in enumerate(tramos):
+        c = []
+        if lo is not None:
+            c.append("%s >= %s" % (columna, lo))
+        if hi is not None:
+            c.append("%s < %s" % (columna, hi))
+        partes.append("count(*) FILTER (WHERE %s) AS t%d" % (" AND ".join(c), i))
+    return ", ".join(partes)
+
+
+def histograma(fila, tramos):
+    # Convierte la fila de la base en [{"tramo": ..., "n": ...}, ...]
+    return [{"tramo": nombre, "n": fila["t%d" % i]} for i, (nombre, _, _) in enumerate(tramos)]
+
+
+@app.get("/api/estadisticas")
+async def estadisticas(
+    start: Optional[datetime] = Query(None, description="ISO8601, inclusive. Sin start ni end: ultimas 24 h."),
+    end: Optional[datetime] = Query(None, description="ISO8601, exclusive."),
+    min_mag: Optional[float] = Query(None, description="Magnitud minima. Los nulos NO cumplen el filtro."),
+    country_id: Optional[str] = Query(None, description="ADM0_A3 (p. ej. ESP). 'NONE' = sin pais asignado."),
+    top: int = Query(15, ge=1, le=60, description="Cuantos paises se listan; el resto se agrupa en 'otros'."),
+):
+    """Recuentos por hora UTC y pais, distribuciones de magnitud/profundidad y comparacion con el historico."""
+    # --- Mismo rango por defecto y mismos filtros que /api/eventos (para que mapa y graficos coincidan) ---
+    ahora = datetime.now(timezone.utc)
+    if start is None and end is None:
+        start = ahora - timedelta(hours=24)
+    if start is not None:
+        start = a_utc(start)
+    if end is not None:
+        end = a_utc(end)
+    if start is not None and end is not None and start >= end:
+        return JSONResponse(status_code=422, content={"status": "error", "detail": "start debe ser anterior a end"})
+
+    # --- WHERE con parametros. "pais" y "mag" se guardan aparte para poder contar nulos y reutilizar el pais ---
+    cond, args = [], []
+    def add(sql, valor):
+        args.append(valor)
+        cond.append(sql.replace("?", "$%d" % len(args)))
+    if start is not None:
+        add("e.time_utc >= ?", start)
+    if end is not None:
+        add("e.time_utc < ?", end)
+    if country_id:
+        if country_id.upper() == "NONE":
+            cond.append("e.pais_adm0_a3 IS NULL")
+        else:
+            add("e.pais_adm0_a3 = ?", country_id.upper())
+    donde_sin_mag, args_sin_mag = (" AND ".join(cond) or "TRUE"), list(args)   # filtros SIN magnitud
+    if min_mag is not None:
+        add("e.mag >= ?", min_mag)
+    donde = " AND ".join(cond) or "TRUE"                                       # todos los filtros
+
+    try:
+        pool = await get_pool(app)
+        async with pool.acquire(timeout=5) as db:
+            total = await db.fetchval("SELECT count(*) FROM evento_actual e WHERE " + donde, *args)
+
+            # ---- 1) Recuento por hora UTC (hora del EVENTO, no de llegada) ----
+            lo = start or await db.fetchval("SELECT min(e.time_utc) FROM evento_actual e WHERE " + donde, *args)
+            hi = end or ahora
+            por_hora, aviso_hora = [], None
+            if lo is not None:
+                lo_h = lo.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)  # redondeo a la hora
+                n_horas = int((hi - lo_h).total_seconds() // 3600) + 1
+                if n_horas > MAX_HORAS:
+                    aviso_hora = "Rango de %d horas: supera el maximo de %d (31 dias). Acota start/end." % (n_horas, MAX_HORAS)
+                else:
+                    filas = await db.fetch(
+                        "SELECT date_trunc('hour', e.time_utc, 'UTC') AS h, count(*) AS n "
+                        "FROM evento_actual e WHERE " + donde + " GROUP BY 1", *args)
+                    por_h = {r["h"]: r["n"] for r in filas}
+                    t = lo_h
+                    while t < hi:                       # una barra por hora, tambien las horas con 0 eventos
+                        por_hora.append({"hora": t.isoformat(), "n": por_h.get(t, 0),
+                                         "parcial": t + timedelta(hours=1) > ahora})   # hora aun en curso
+                        t += timedelta(hours=1)
+
+            # ---- 2) Recuento por pais (el NULL se muestra como "Sin pais asignado") ----
+            filas = await db.fetch(
+                "SELECT e.pais_adm0_a3 AS id, p.nombre_es AS nombre, count(*) AS n "
+                "FROM evento_actual e LEFT JOIN pais p ON p.adm0_a3 = e.pais_adm0_a3 "
+                "WHERE " + donde + " GROUP BY e.pais_adm0_a3, p.nombre_es "
+                "ORDER BY n DESC, e.pais_adm0_a3 NULLS LAST", *args)
+            paises = [{"country_id": r["id"], "country_name": r["nombre"] or "Sin país asignado", "n": r["n"]}
+                      for r in filas]
+            resto = paises[top:]
+            paises = paises[:top]
+
+            # ---- 3) Distribucion de magnitud + cuantos eventos no tienen magnitud ----
+            fm = await db.fetchrow("SELECT " + sql_tramos("e.mag", TRAMOS_MAG) +
+                                   " FROM evento_actual e WHERE " + donde, *args)
+            sin_mag = await db.fetchval(
+                "SELECT count(*) FROM evento_actual e WHERE e.mag IS NULL AND " + donde_sin_mag, *args_sin_mag)
+
+            # ---- 4) Distribucion de profundidad + cuantos no tienen profundidad ----
+            fp = await db.fetchrow("SELECT " + sql_tramos("e.depth_km", TRAMOS_PROF) +
+                                   ", count(*) FILTER (WHERE e.depth_km IS NULL) AS sin_valor "
+                                   "FROM evento_actual e WHERE " + donde, *args)
+
+            # ---- 5) Comparacion historica: ultimas 24 h vs media diaria del anyo historico ----
+            # Solo respeta el filtro de PAIS (y la magnitud minima si es mayor que 4): las ventanas de tiempo son fijas.
+            umbral = max(HIST_UMBRAL, min_mag) if min_mag is not None else HIST_UMBRAL
+            h_ini = datetime(HIST_ANYO, 1, 1, tzinfo=timezone.utc)
+            h_fin = datetime(HIST_ANYO + 1, 1, 1, tzinfo=timezone.utc)
+            dias = (h_fin - h_ini).days                          # 365: incluye los dias con 0 eventos
+            h_args = [ahora - timedelta(hours=24), ahora, h_ini, h_fin, umbral]
+            h_pais, h_pais_args = "", []
+            if country_id:
+                if country_id.upper() == "NONE":
+                    h_pais = " AND e.pais_adm0_a3 IS NULL"
+                else:
+                    h_pais, h_pais_args = " AND e.pais_adm0_a3 = $6", [country_id.upper()]
+            fh = await db.fetchrow(
+                "SELECT count(*) FILTER (WHERE e.time_utc >= $1 AND e.time_utc < $2) AS ult24, "
+                "count(*) FILTER (WHERE e.time_utc >= $3 AND e.time_utc < $4) AS n_hist "
+                "FROM evento_actual e WHERE e.mag >= $5" + h_pais, *(h_args + h_pais_args))
+            # Eventos de las ultimas 24 h SIN magnitud: no pueden compararse con ">= 4", se informan aparte
+            sin_mag_24 = await db.fetchval(
+                "SELECT count(*) FROM evento_actual e WHERE e.mag IS NULL "
+                "AND e.time_utc >= $1 AND e.time_utc < $2" + h_pais.replace("$6", "$3"),
+                h_args[0], h_args[1], *h_pais_args)
+            last = await ultima_ingesta(db)
+    except Exception:
+        return error_bd()
+
+    # --- Armar la respuesta. Cada bloque dice su unidad, sus filtros y sus nulos ---
+    filtros = {"start": start.isoformat() if start else None, "end": end.isoformat() if end else None,
+               "min_mag": min_mag, "country_id": country_id}
+    periodo = {"start": lo.isoformat() if lo else None, "end": hi.isoformat()}
+    media = round(fh["n_hist"] / dias, 3) if fh["n_hist"] > 0 else None   # None (no 0) si el historico no esta cargado
+    return {
+        "metadata": {
+            "generated": now_ms(), "last_ingestion": last, "mode": "live", "total_eventos": total,
+            "filters": filtros, "periodo": periodo,
+            "fuente": "evento_actual (ultima version de cada terremoto; las revisiones no se cuentan dos veces)",
+            "aviso": "El ultimo periodo puede estar incompleto: USGS publica y revisa eventos con retraso.",
+        },
+        "por_hora": {"unidad": "terremotos por hora UTC (hora del evento)", "filtros": filtros, "periodo": periodo,
+                     "aviso": aviso_hora, "datos": por_hora},
+        "por_pais": {"unidad": "terremotos por pais", "filtros": filtros, "periodo": periodo,
+                     "sin_pais_asignado": next((p["n"] for p in paises + resto if p["country_id"] is None), 0),
+                     "otros": {"n_paises": len(resto), "n": sum(p["n"] for p in resto)}, "datos": paises},
+        "magnitud": {"unidad": "terremotos por tramo de magnitud", "filtros": filtros, "periodo": periodo,
+                     "sin_valor": sin_mag,
+                     "nota": "sin_valor = eventos sin magnitud que cumplen el resto de filtros (con min_mag no entran en los tramos).",
+                     "datos": histograma(fm, TRAMOS_MAG)},
+        "profundidad": {"unidad": "terremotos por tramo de profundidad (km)", "filtros": filtros, "periodo": periodo,
+                        "sin_valor": fp["sin_valor"], "datos": histograma(fp, TRAMOS_PROF)},
+        "comparacion_historica": {
+            "unidad": "terremotos por dia con magnitud >= %s" % umbral,
+            "filtros": {"country_id": country_id, "min_mag": umbral},
+            "periodo_actual": {"start": h_args[0].isoformat(), "end": h_args[1].isoformat()},
+            "periodo_historico": {"start": h_ini.isoformat(), "end": h_fin.isoformat(), "dias": dias},
+            "ultimas_24h": fh["ult24"], "ultimas_24h_sin_magnitud": sin_mag_24,
+            "historico_total": fh["n_hist"], "media_diaria_historica": media,
+            "ratio": round(fh["ult24"] / media, 2) if media else None,
+            "aviso": ("Historico no cargado: no se puede comparar." if media is None else
+                      "La media divide entre %d dias, incluidos los dias con 0 eventos. "
+                      "Las ultimas 24 h pueden estar incompletas por retrasos de USGS." % dias),
+        },
+    }
