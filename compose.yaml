@@ -47,6 +47,21 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Servicio auxiliar de UN SOLO USO (no es uno de los cinco servicios del sistema):
+  # crea los topics si no existen. Como la creacion automatica esta desactivada a proposito,
+  # sin esto un equipo nuevo arrancaria sin topics. Con --if-not-exists es inofensivo si ya existen.
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic usgs.live --partitions 3 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic usgs.replay --partitions 1 --replication-factor 1 --config retention.ms=86400000
+    restart: "no"
+
   producer:
     build: ./producer
     environment:
@@ -63,6 +78,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   consumer:
@@ -83,6 +100,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   api:
