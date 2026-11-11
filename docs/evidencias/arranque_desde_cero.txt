@@ -1,0 +1,19 @@
+﻿== Servicios (copia limpia clonada de GitHub, proyecto 'prueba')
+NAME                  IMAGE                COMMAND                  SERVICE      CREATED              STATUS                          PORTS
+prueba-api-1          prueba-api           "uvicorn main:app --…"   api          About a minute ago   Up About a minute (healthy)     127.0.0.1:8000->8000/tcp
+prueba-consumer-1     prueba-consumer      "python consumer.py"     consumer     About a minute ago   Up About a minute               
+prueba-kafka-1        apache/kafka:4.3.1   "/__cacert_entrypoin…"   kafka        About a minute ago   Up About a minute (healthy)     127.0.0.1:9092->9092/tcp
+prueba-kafka-init-1   apache/kafka:4.3.1   "/bin/sh -c '/opt/ka…"   kafka-init   About a minute ago   Exited (0) About a minute ago   
+prueba-postgres-1     postgres:16          "docker-entrypoint.s…"   postgres     About a minute ago   Up About a minute (healthy)     5432/tcp
+prueba-producer-1     prueba-producer      "python producer.py"     producer     About a minute ago   Up About a minute               
+== Topics creados por kafka-init
+__consumer_offsets
+usgs.live
+usgs.replay
+== Salud de la API
+{"status":"ok","database":"ok","generated":1794401133576,"last_ingestion":1794401088051}
+
+== Filas en la base
+paises=177
+eventos_actuales=182
+cuarentena=4
