@@ -3,6 +3,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -15,6 +16,11 @@ BOOTSTRAP = os.environ["KAFKA_BOOTSTRAP_SERVERS"]
 TOPIC = os.environ.get("KAFKA_TOPIC", "usgs.live")
 GROUP = os.environ.get("KAFKA_GROUP", "consumidor-live")
 CATALOG = os.environ.get("CATALOG_PATH", "/data/paises.geojson")
+# Esquema de PostgreSQL donde escribe este consumidor. 'public' = datos EN VIVO (comportamiento de siempre).
+# El consumidor de REPRODUCCION usa DB_SCHEMA=replay: mismas tablas, otro "cajon", sin mezclar con lo real.
+SCHEMA = os.environ.get("DB_SCHEMA", "public")
+if not re.fullmatch(r"[a-z_][a-z0-9_]*", SCHEMA):      # el nombre se escribe en SQL: solo letras minusculas, numeros y _
+    sys.exit(f"DB_SCHEMA invalido: {SCHEMA!r}")
 PG = dict(
     host=os.environ.get("POSTGRES_HOST", "postgres"),
     user=os.environ["POSTGRES_USER"],
@@ -152,11 +158,28 @@ async def handle(db, catalog, m, stats):
 async def connect_db():
     for i in range(1, 31):
         try:
-            return await asyncpg.connect(**PG)
+            if SCHEMA == "public":
+                return await asyncpg.connect(**PG)
+            # search_path: primero el esquema propio, luego public (donde vive la tabla compartida 'pais')
+            return await asyncpg.connect(**PG, server_settings={"search_path": f"{SCHEMA}, public"})
         except Exception as e:
             log(f"PostgreSQL no disponible ({e!r}); intento {i}/30")
             await asyncio.sleep(2)
     sys.exit("sin PostgreSQL")
+
+
+TABLAS_POR_ESQUEMA = ["evento_actual", "evento_version", "cuarentena"]   # las que se replican en el esquema propio
+
+
+async def ensure_schema(db):
+    """Crea (si faltan) las tablas del esquema propio como copia de las de 'public'. Idempotente: se puede repetir."""
+    if SCHEMA == "public":
+        return
+    await db.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"')
+    for t in TABLAS_POR_ESQUEMA:
+        # LIKE ... INCLUDING ALL copia columnas, claves primarias, indices y valores por defecto
+        await db.execute(f'CREATE TABLE IF NOT EXISTS "{SCHEMA}"."{t}" (LIKE public.{t} INCLUDING ALL)')
+    log(f"Esquema {SCHEMA!r} listo: {', '.join(TABLAS_POR_ESQUEMA)}")
 
 
 async def main():
@@ -164,6 +187,7 @@ async def main():
         catalog = Catalog(json.load(fh))
     log(f"Catalogo cargado: {len(catalog.rows)} entidades")
     db = await connect_db()
+    await ensure_schema(db)
     await db.executemany(
         "INSERT INTO pais (adm0_a3, nombre_es, admin, continente, subregion) VALUES "
         "($1,$2,$3,$4,$5) ON CONFLICT (adm0_a3) DO NOTHING",
@@ -182,7 +206,7 @@ async def main():
             await asyncio.sleep(2)
     else:
         sys.exit("sin Kafka")
-    log(f"Consumidor listo: topic={TOPIC} grupo={GROUP}")
+    log(f"Consumidor listo: topic={TOPIC} grupo={GROUP} esquema={SCHEMA}")
 
     stats = dict(version_nueva=0, version_repetida=0, actual_cambiada=0, cuarentena=0)
     last_log = asyncio.get_event_loop().time()

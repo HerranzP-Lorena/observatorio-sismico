@@ -1,0 +1,39 @@
+# Reproduccion historica acelerada. NO forma parte de los 5 servicios obligatorios: este archivo es OPCIONAL
+# y solo se usa cuando se quiere reproducir. Con 'docker compose up --build -d' (sin este archivo) no arranca nada de esto.
+#
+# Uso (siempre con los DOS archivos, para que Compose conozca kafka y postgres):
+#   docker compose -f compose.yaml -f compose.replay.yaml up -d --build consumer-replay      # consumidor de reproduccion
+#   docker compose -f compose.yaml -f compose.replay.yaml run --rm replay                    # lanza la reproduccion
+services:
+  consumer-replay:
+    extends:                         # hereda de 'consumer': misma imagen, mismas variables de BD, mismo catalogo
+      file: compose.yaml
+      service: consumer
+    depends_on:                      # 'extends' no hereda depends_on: se repite
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:                     # SOLO cambia lo necesario: otro topic, otro grupo y otro esquema de PostgreSQL
+      KAFKA_TOPIC: usgs.replay
+      KAFKA_GROUP: consumidor-replay
+      DB_SCHEMA: replay
+
+  replay:
+    extends:                         # hereda del productor la imagen y la direccion de Kafka
+      file: compose.yaml
+      service: producer
+    profiles: ["herramientas"]       # no arranca con un 'up' normal; solo con 'run'
+    restart: "no"                    # es una tarea puntual: termina cuando ha enviado todo
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      REPLAY_TOPIC: usgs.replay
+      REPLAY_DESDE: "2025-07-29T23:00:00Z"   # inicio: terremoto de Kamchatka
+      REPLAY_N: "40"                          # cuantos eventos reales
+      REPLAY_PAUSA: "2"                       # segundos entre mensajes (velocidad)
+      HIST_DIR: /historico
+    volumes:
+      - ./historico:/historico:ro    # aqui estan los ficheros mensuales de 2025 ya descargados
+    command: ["python", "/historico/replay.py"]

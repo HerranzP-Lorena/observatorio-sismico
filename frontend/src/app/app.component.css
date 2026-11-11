@@ -7,6 +7,8 @@ h2 { margin: 32px 0 8px; } h3 { margin: 0 0 10px; font-size: 1.05rem; }
 .info p { margin: 8px 0; }
 .estado { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 20px; margin: 12px 0 0; }
 .estado dt { font-size: .75rem; color: #42596b; } .estado dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.replay { margin: 14px 0; padding: 14px 18px; border-radius: 8px; background: repeating-linear-gradient(45deg, #5b2a86, #5b2a86 14px, #6d35a0 14px, #6d35a0 28px); color: white; font-size: 1rem; }
+.replay strong:first-child { font-size: 1.3rem; letter-spacing: .12em; margin-right: 10px; }
 .alert { padding: 8px 12px; border-radius: 6px; font-weight: 600; }
 .alert.error { background: #fde8e8; color: #8a1c1c; border: 1px solid #e3a3a3; }
 .alert.warn { background: #fff4d6; color: #6b4a00; border: 1px solid #e6c46a; }

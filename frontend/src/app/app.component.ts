@@ -14,13 +14,14 @@ type Filters = { start: string | null; end: string | null; min_mag: number | nul
 type Meta = {
   generated?: number; last_ingestion?: number | null; count?: number; truncated?: boolean;
   total?: number; mag_null_excluded?: number; filters?: Filters;
+  mode?: string; data_range?: { min: number; max: number } | null;   // mode: 'live' o 'replay'
 };
 type Events = FeatureCollection<Point, Properties> & { metadata?: Meta };
 type Config = { mode: 'demo' | 'api'; apiUrl: string; refreshMs: number; skipNgrokWarning: boolean };
 
 type Tramo = { tramo: string; n: number };
 type Stats = {
-  metadata: { generated: number; last_ingestion: number | null; total_eventos: number; aviso: string };
+  metadata: { generated: number; last_ingestion: number | null; total_eventos: number; aviso: string; mode: string };
   por_hora: { aviso: string | null; datos: { hora: string; n: number; parcial: boolean }[] };
   por_pais: { sin_pais_asignado: number; otros: { n_paises: number; n: number };
               datos: { country_id: string | null; country_name: string; n: number }[] };
@@ -51,6 +52,7 @@ export class AppComponent implements OnDestroy {
   readonly stale = signal<string | null>(null);        // aviso de datos desactualizados
   readonly backendError = signal<string | null>(null); // aviso de backend caido
   readonly periodText = signal('Sin consulta');
+  readonly replay = signal(false);                     // true cuando se esta viendo la REPRODUCCION historica (no datos reales)
   readonly truncatedMsg = signal<string | null>(null);
   readonly count = signal(0);
   readonly omitted = signal(0);
@@ -71,7 +73,7 @@ export class AppComponent implements OnDestroy {
   private config?: Config;
   private seq = 0;   // numero de consulta: si una respuesta lenta llega tarde, se ignora y no pisa a la nueva
   // Filtros actuales (los mismos se aplican al mapa, a la tabla y a los graficos)
-  private fStart = ''; private fEnd = ''; private fMag = ''; private fCountry = '';
+  private fStart = ''; private fEnd = ''; private fMag = ''; private fCountry = ''; private fSource = 'live';
 
   async onMapReady(map: L.Map): Promise<void> {
     this.map = map;
@@ -109,9 +111,10 @@ export class AppComponent implements OnDestroy {
   }
 
   // Boton "Aplicar filtros": guarda los valores del formulario y consulta de nuevo ya mismo
-  apply(start: string, end: string, minMag: string, country: string): void {
+  apply(start: string, end: string, minMag: string, country: string, source: string): void {
     if (start && end && start > end) { this.status.set('La fecha inicial es posterior a la final: corrige el rango.'); return; }
     this.fStart = start; this.fEnd = end; this.fMag = minMag.trim(); this.fCountry = country;
+    this.fSource = source === 'replay' ? 'replay' : 'live';   // solo dos valores posibles
     this.shown.set(100);
     clearTimeout(this.timer);
     void this.refresh();
@@ -131,6 +134,7 @@ export class AppComponent implements OnDestroy {
   }
   // Traduce el error tecnico a una frase que entienda quien mira el panel
   private explain(error?: string): string {
+    if (error === 'HTTP 404') return 'No hay datos de reproducción todavía: ejecuta primero la reproducción histórica';
     if (error === 'HTTP 503') return 'La API responde, pero informa de que la base de datos no está disponible (HTTP 503)';
     if (error?.startsWith('HTTP')) return `La API respondió con un error (${error})`;
     return 'No hay respuesta del backend (túnel cerrado, API parada o CORS)';
@@ -139,6 +143,7 @@ export class AppComponent implements OnDestroy {
   // Parametros de la URL con los filtros actuales. Se usa igual para /api/eventos y /api/estadisticas.
   private query(extra: Record<string, string> = {}): string {
     const p = new URLSearchParams(extra);
+    p.set('source', this.fSource);                                          // live = datos reales; replay = reproduccion aislada
     if (this.fStart) p.set('start', `${this.fStart}T00:00:00Z`);          // desde el inicio de ese dia UTC
     if (this.fEnd) {                                                        // "hasta" incluye el dia entero: end = dia siguiente (exclusivo)
       const d = new Date(`${this.fEnd}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1);
@@ -213,11 +218,14 @@ export class AppComponent implements OnDestroy {
     this.lastIngestion.set(this.date(data.metadata?.last_ingestion));
     // Estado del sistema: periodo consultado y avisos
     const f = data.metadata?.filters;
-    this.periodText.set(f ? `${f.start ?? 'sin inicio'} → ${f.end ?? 'ahora'} · magnitud mínima: ${f.min_mag ?? 'sin filtro'} · país: ${f.country_id ?? 'todos'}` : 'Datos de demostración');
+    const rp = data.metadata?.mode === 'replay';
+    this.replay.set(rp);
+    const rango = rp && data.metadata?.data_range ? ` · intervalo de los datos reproducidos: ${this.date(data.metadata.data_range.min)} → ${this.date(data.metadata.data_range.max)}` : '';
+    this.periodText.set(f ? `${f.start ?? 'sin inicio'} → ${f.end ?? (rp ? 'sin fin' : 'ahora')} · magnitud mínima: ${f.min_mag ?? 'sin filtro'} · país: ${f.country_id ?? 'todos'}${rango}` : 'Datos de demostración');
     const m = data.metadata;
     this.truncatedMsg.set(m?.truncated ? `Hay ${m.total} eventos y solo se dibujan ${m.count}: acota el periodo o sube la magnitud mínima.` : null);
     const li = m?.last_ingestion;
-    if (config.mode === 'demo') this.stale.set(null);
+    if (config.mode === 'demo' || rp) this.stale.set(null);   // en reproduccion no hay ingesta de USGS que vigilar
     else if (typeof li !== 'number') this.stale.set('La API no tiene ninguna ingesta correcta registrada: el productor puede no haber arrancado.');
     else if (Date.now() - li > STALE_MS) this.stale.set(`Datos desactualizados: la última ingesta correcta de USGS fue hace ${Math.round((Date.now() - li) / 60000)} min. El productor puede estar parado.`);
     else this.stale.set(null);

@@ -5,6 +5,11 @@
     <p>Terremotos de USGS procesados con Kafka y PostgreSQL. Estadísticas descriptivas, no una predicción ni una evaluación de riesgo.</p>
   </header>
 
+  <!-- AVISO GRANDE: en reproduccion NADA de lo que se ve es actualidad -->
+  @if (replay()) {
+    <div class="replay" role="status"><strong>REPRODUCCIÓN</strong> Datos históricos reproducidos a través de Kafka en un esquema aislado. Conservan su fecha original y <strong>no representan actividad actual</strong>.</div>
+  }
+
   <!-- ESTADO DEL SISTEMA: ultimo acceso a la API, ultima ingesta de USGS, periodo y avisos -->
   <section class="info" aria-live="polite" aria-label="Estado del sistema">
     <strong>{{ mode() }}</strong>
@@ -15,14 +20,17 @@
     <p>{{ countriesStatus() }} · {{ count() }} eventos dibujados · {{ omitted() }} omitidos por coordenadas inválidas</p>
     <dl class="estado">
       <div><dt>Último acceso correcto a la API (UTC)</dt><dd>{{ lastRead() }}</dd></div>
-      <div><dt>Última ingesta correcta de USGS (UTC)</dt><dd>{{ lastIngestion() }}</dd></div>
+      <div><dt>{{ replay() ? 'Última hora de reproducción procesada (UTC)' : 'Última ingesta correcta de USGS (UTC)' }}</dt><dd>{{ lastIngestion() }}</dd></div>
       <div><dt>Respuesta generada por la API (UTC)</dt><dd>{{ generated() }}</dd></div>
       <div><dt>Periodo y filtros consultados</dt><dd>{{ periodText() }}</dd></div>
     </dl>
   </section>
 
   <!-- FILTROS: los mismos valores se envian a /api/eventos (mapa y tabla) y a /api/estadisticas (graficos) -->
-  <form class="filtros" aria-label="Filtros" (submit)="$event.preventDefault(); apply(fs.value, fe.value, mm.value, cc.value)">
+  <form class="filtros" aria-label="Filtros" (submit)="$event.preventDefault(); apply(fs.value, fe.value, mm.value, cc.value, src.value)">
+    <label>Fuente de datos
+      <select #src><option value="live">En directo (datos reales)</option><option value="replay">REPRODUCCIÓN histórica</option></select>
+    </label>
     <label>Desde (UTC) <input #fs type="date"></label>
     <label>Hasta (UTC, incluido) <input #fe type="date"></label>
     <label>Magnitud mínima <input #mm type="number" step="0.1" min="-2" max="10" placeholder="sin filtro"></label>
@@ -34,7 +42,7 @@
       </select>
     </label>
     <button type="submit">Aplicar filtros</button>
-    <small>Sin fechas: últimas 24 horas. Los eventos sin magnitud no cumplen un filtro de magnitud mínima y se cuentan aparte.</small>
+    <small>Sin fechas: en directo, las últimas 24 horas; en reproducción, todos los eventos reproducidos. Los eventos sin magnitud no cumplen un filtro de magnitud mínima y se cuentan aparte.</small>
   </form>
 
   <div class="map" leaflet [leafletOptions]="options" (leafletMapReady)="onMapReady($event)" aria-label="Mapa interactivo de terremotos"></div>
@@ -50,6 +58,12 @@
     <p class="nota">Calculado desde la tabla de estado actual (una fila por terremoto: las revisiones de USGS no se cuentan dos veces). {{ s.metadata.aviso }}</p>
     <div class="grid">
 
+      @if (s.metadata.mode === 'replay') {
+        <section class="card" aria-labelledby="t-hist">
+          <h3 id="t-hist">Comparación histórica</h3>
+          <p class="nota">No aplicable en reproducción: la comparación «últimas 24 h frente a la media diaria de 2025» solo tiene sentido con datos en directo.</p>
+        </section>
+      } @else {
       <section class="card" aria-labelledby="t-hist">
         <h3 id="t-hist">Comparación histórica</h3>
         @let h = s.comparacion_historica;
@@ -58,6 +72,7 @@
         <p class="big">{{ h.ratio === null ? 'ND' : h.ratio }} <span>veces la media diaria histórica</span></p>
         <p class="nota">País: {{ h.filtros.country_id ?? 'todos' }}. Sin magnitud en las últimas 24 h: {{ h.ultimas_24h_sin_magnitud }} (no comparables). {{ h.aviso }}</p>
       </section>
+      }
 
       <section class="card" aria-labelledby="t-hora">
         <h3 id="t-hora">Terremotos por hora UTC (hora del evento)</h3>

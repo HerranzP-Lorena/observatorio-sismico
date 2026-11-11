@@ -67,11 +67,29 @@ def error_bd():
                                                   "generated": now_ms(), "last_ingestion": None})
 
 
-async def ultima_ingesta(db):
-    # Fecha de la ultima consulta a USGS que salio bien (HTTP 200 y sin error), en ms Unix.
-    last = await db.fetchval(
-        "SELECT max(requested_at) FROM ingesta_consulta WHERE http_status = 200 AND error IS NULL")
+async def ultima_ingesta(db, source="live"):
+    # En vivo: fecha de la ultima consulta correcta a USGS (HTTP 200 y sin error), en ms Unix.
+    if source == "replay":
+        # En reproduccion no hay consultas a USGS: se informa de la ultima hora a la que el consumidor guardo un evento.
+        last = await db.fetchval("SELECT max(ingested_at) FROM replay.evento_actual")
+    else:
+        last = await db.fetchval(
+            "SELECT max(requested_at) FROM ingesta_consulta WHERE http_status = 200 AND error IS NULL")
     return int(last.timestamp() * 1000) if last else None
+
+
+def tabla(source):
+    # Tabla de eventos segun la fuente. Lista CERRADA: nunca se escribe en el SQL un texto que venga del usuario.
+    return "replay.evento_actual" if source == "replay" else "evento_actual"
+
+
+async def hay_replay(db):
+    # El esquema 'replay' lo crea el consumidor de reproduccion al arrancar; si nunca se ejecuto, no existe.
+    return await db.fetchval("SELECT to_regclass('replay.evento_actual')") is not None
+
+
+def sin_replay():
+    return JSONResponse(status_code=404, content={"status": "error", "detail": "No hay datos de reproduccion: ejecuta primero la reproduccion historica."})
 
 
 def a_utc(d):
@@ -101,13 +119,15 @@ async def eventos(
     start: Optional[datetime] = Query(None, description="ISO8601, inclusive. Sin start ni end: ultimas 24 h."),
     end: Optional[datetime] = Query(None, description="ISO8601, exclusive."),
     min_mag: Optional[float] = Query(None, description="Magnitud minima. Los nulos NO cumplen el filtro."),
+    source: str = Query("live", pattern="^(live|replay)$", description="live = datos reales; replay = REPRODUCCION historica (datos aislados)."),
     country_id: Optional[str] = Query(None, description="ADM0_A3 (p. ej. ESP). 'NONE' = sin pais asignado."),
     limit: int = Query(MAX_LIMIT, ge=1, le=MAX_LIMIT, description="Maximo de eventos devueltos."),
     offset: int = Query(0, ge=0, description="Para paginar cuando hay truncado."),
 ):
     """GeoJSON FeatureCollection con la version ACTUAL de cada terremoto (una sola vez cada uno)."""
+    T = tabla(source)       # evento_actual (vivo) o replay.evento_actual (reproduccion)
     # --- Rango de tiempo ---
-    if start is None and end is None:
+    if start is None and end is None and source == "live":
         # Por defecto (contrato): terremotos ocurridos en las ultimas 24 horas.
         start = datetime.now(timezone.utc) - timedelta(hours=24)
     if start is not None:
@@ -139,20 +159,24 @@ async def eventos(
     try:
         pool = await get_pool(app)
         async with pool.acquire(timeout=5) as db:
-            total = await db.fetchval("SELECT count(*) FROM evento_actual e WHERE " + donde, *args)
+            if source == "replay" and not await hay_replay(db):
+                return sin_replay()
+            total = await db.fetchval("SELECT count(*) FROM " + T + " e WHERE " + donde, *args)
             # Cuantos eventos se dejan fuera SOLO por no tener magnitud (se informa, no se esconde)
             nulos_excluidos = 0
             if min_mag is not None:
                 nulos_excluidos = await db.fetchval(
-                    "SELECT count(*) FROM evento_actual e WHERE e.mag IS NULL AND " + donde_sin_mag,
+                    "SELECT count(*) FROM " + T + " e WHERE e.mag IS NULL AND " + donde_sin_mag,
                     *args[:len(args) - 1])
             filas = await db.fetch(
-                "SELECT e.event_id, e.time_utc, e.updated_utc, e.mag, e.mag_type, e.depth_km, e.lon, e.lat, "
+                "SELECT e.event_id, e.time_utc, e.updated_utc, e.ingested_at, e.mag, e.mag_type, e.depth_km, e.lon, e.lat, "
                 "e.place, e.pais_adm0_a3, p.nombre_es "
-                "FROM evento_actual e LEFT JOIN pais p ON p.adm0_a3 = e.pais_adm0_a3 "
+                "FROM " + T + " e LEFT JOIN pais p ON p.adm0_a3 = e.pais_adm0_a3 "
                 "WHERE " + donde + " ORDER BY e.time_utc DESC, e.event_id "
                 "LIMIT $%d OFFSET $%d" % (len(args) + 1, len(args) + 2), *args, limit, offset)
-            last = await ultima_ingesta(db)
+            last = await ultima_ingesta(db, source)
+            # En reproduccion se informa del intervalo de fechas que contienen los datos (para saber que consultar)
+            rango = await db.fetchrow("SELECT min(e.time_utc) AS a, max(e.time_utc) AS b FROM " + T + " e") if source == "replay" else None
     except Exception:
         return error_bd()
 
@@ -168,6 +192,7 @@ async def eventos(
             "place": r["place"],
             "time": int(r["time_utc"].timestamp() * 1000),
             "updated": int(r["updated_utc"].timestamp() * 1000),
+            "ingested": int(r["ingested_at"].timestamp() * 1000),   # hora a la que se proceso (en reproduccion = hora de reproduccion)
             "country_id": r["pais_adm0_a3"],       # null = Sin pais asignado
             "country_name": r["nombre_es"],
         },
@@ -176,7 +201,8 @@ async def eventos(
     return {
         "type": "FeatureCollection",
         "metadata": {
-            "generated": now_ms(), "last_ingestion": last, "mode": "live",
+            "generated": now_ms(), "last_ingestion": last, "mode": source,
+            "data_range": {"min": int(rango["a"].timestamp() * 1000), "max": int(rango["b"].timestamp() * 1000)} if rango and rango["a"] else None,
             "count": len(features), "truncated": truncado,
             "total": total, "limit": limit, "offset": offset,
             "next_offset": offset + len(features) if truncado else None,
@@ -229,13 +255,15 @@ async def estadisticas(
     start: Optional[datetime] = Query(None, description="ISO8601, inclusive. Sin start ni end: ultimas 24 h."),
     end: Optional[datetime] = Query(None, description="ISO8601, exclusive."),
     min_mag: Optional[float] = Query(None, description="Magnitud minima. Los nulos NO cumplen el filtro."),
+    source: str = Query("live", pattern="^(live|replay)$", description="live = datos reales; replay = REPRODUCCION historica (datos aislados)."),
     country_id: Optional[str] = Query(None, description="ADM0_A3 (p. ej. ESP). 'NONE' = sin pais asignado."),
     top: int = Query(15, ge=1, le=60, description="Cuantos paises se listan; el resto se agrupa en 'otros'."),
 ):
     """Recuentos por hora UTC y pais, distribuciones de magnitud/profundidad y comparacion con el historico."""
     # --- Mismo rango por defecto y mismos filtros que /api/eventos (para que mapa y graficos coincidan) ---
+    T = tabla(source)
     ahora = datetime.now(timezone.utc)
-    if start is None and end is None:
+    if start is None and end is None and source == "live":
         start = ahora - timedelta(hours=24)
     if start is not None:
         start = a_utc(start)
@@ -266,11 +294,19 @@ async def estadisticas(
     try:
         pool = await get_pool(app)
         async with pool.acquire(timeout=5) as db:
-            total = await db.fetchval("SELECT count(*) FROM evento_actual e WHERE " + donde, *args)
+            if source == "replay" and not await hay_replay(db):
+                return sin_replay()
+            total = await db.fetchval("SELECT count(*) FROM " + T + " e WHERE " + donde, *args)
 
             # ---- 1) Recuento por hora UTC (hora del EVENTO, no de llegada) ----
-            lo = start or await db.fetchval("SELECT min(e.time_utc) FROM evento_actual e WHERE " + donde, *args)
-            hi = end or ahora
+            lo = start or await db.fetchval("SELECT min(e.time_utc) FROM " + T + " e WHERE " + donde, *args)
+            if end is not None:
+                hi = end
+            elif source == "live":
+                hi = ahora
+            else:                                     # reproduccion: el periodo acaba en el ultimo evento reproducido, no "ahora"
+                mx = await db.fetchval("SELECT max(e.time_utc) FROM " + T + " e WHERE " + donde, *args)
+                hi = mx + timedelta(hours=1) if mx else ahora
             por_hora, aviso_hora = [], None
             if lo is not None:
                 lo_h = lo.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)  # redondeo a la hora
@@ -280,7 +316,7 @@ async def estadisticas(
                 else:
                     filas = await db.fetch(
                         "SELECT date_trunc('hour', e.time_utc, 'UTC') AS h, count(*) AS n "
-                        "FROM evento_actual e WHERE " + donde + " GROUP BY 1", *args)
+                        "FROM " + T + " e WHERE " + donde + " GROUP BY 1", *args)
                     por_h = {r["h"]: r["n"] for r in filas}
                     t = lo_h
                     while t < hi:                       # una barra por hora, tambien las horas con 0 eventos
@@ -291,7 +327,7 @@ async def estadisticas(
             # ---- 2) Recuento por pais (el NULL se muestra como "Sin pais asignado") ----
             filas = await db.fetch(
                 "SELECT e.pais_adm0_a3 AS id, p.nombre_es AS nombre, count(*) AS n "
-                "FROM evento_actual e LEFT JOIN pais p ON p.adm0_a3 = e.pais_adm0_a3 "
+                "FROM " + T + " e LEFT JOIN pais p ON p.adm0_a3 = e.pais_adm0_a3 "
                 "WHERE " + donde + " GROUP BY e.pais_adm0_a3, p.nombre_es "
                 "ORDER BY n DESC, e.pais_adm0_a3 NULLS LAST", *args)
             paises = [{"country_id": r["id"], "country_name": r["nombre"] or "Sin país asignado", "n": r["n"]}
@@ -301,14 +337,14 @@ async def estadisticas(
 
             # ---- 3) Distribucion de magnitud + cuantos eventos no tienen magnitud ----
             fm = await db.fetchrow("SELECT " + sql_tramos("e.mag", TRAMOS_MAG) +
-                                   " FROM evento_actual e WHERE " + donde, *args)
+                                   " FROM " + T + " e WHERE " + donde, *args)
             sin_mag = await db.fetchval(
-                "SELECT count(*) FROM evento_actual e WHERE e.mag IS NULL AND " + donde_sin_mag, *args_sin_mag)
+                "SELECT count(*) FROM " + T + " e WHERE e.mag IS NULL AND " + donde_sin_mag, *args_sin_mag)
 
             # ---- 4) Distribucion de profundidad + cuantos no tienen profundidad ----
             fp = await db.fetchrow("SELECT " + sql_tramos("e.depth_km", TRAMOS_PROF) +
                                    ", count(*) FILTER (WHERE e.depth_km IS NULL) AS sin_valor "
-                                   "FROM evento_actual e WHERE " + donde, *args)
+                                   "FROM " + T + " e WHERE " + donde, *args)
 
             # ---- 5) Comparacion historica: ultimas 24 h vs media diaria del anyo historico ----
             # Solo respeta el filtro de PAIS (y la magnitud minima si es mayor que 4): las ventanas de tiempo son fijas.
@@ -323,16 +359,20 @@ async def estadisticas(
                     h_pais = " AND e.pais_adm0_a3 IS NULL"
                 else:
                     h_pais, h_pais_args = " AND e.pais_adm0_a3 = $6", [country_id.upper()]
-            fh = await db.fetchrow(
-                "SELECT count(*) FILTER (WHERE e.time_utc >= $1 AND e.time_utc < $2) AS ult24, "
-                "count(*) FILTER (WHERE e.time_utc >= $3 AND e.time_utc < $4) AS n_hist "
-                "FROM evento_actual e WHERE e.mag >= $5" + h_pais, *(h_args + h_pais_args))
-            # Eventos de las ultimas 24 h SIN magnitud: no pueden compararse con ">= 4", se informan aparte
-            sin_mag_24 = await db.fetchval(
-                "SELECT count(*) FROM evento_actual e WHERE e.mag IS NULL "
-                "AND e.time_utc >= $1 AND e.time_utc < $2" + h_pais.replace("$6", "$3"),
-                h_args[0], h_args[1], *h_pais_args)
-            last = await ultima_ingesta(db)
+            if source == "replay":
+                # La comparacion 'ultimas 24 h vs media de 2025' solo tiene sentido con datos en vivo: en reproduccion no se calcula.
+                fh, sin_mag_24 = {"ult24": 0, "n_hist": 0}, 0
+            else:
+                fh = await db.fetchrow(
+                    "SELECT count(*) FILTER (WHERE e.time_utc >= $1 AND e.time_utc < $2) AS ult24, "
+                    "count(*) FILTER (WHERE e.time_utc >= $3 AND e.time_utc < $4) AS n_hist "
+                    "FROM " + T + " e WHERE e.mag >= $5" + h_pais, *(h_args + h_pais_args))
+                # Eventos de las ultimas 24 h SIN magnitud: no pueden compararse con ">= 4", se informan aparte
+                sin_mag_24 = await db.fetchval(
+                    "SELECT count(*) FROM " + T + " e WHERE e.mag IS NULL "
+                    "AND e.time_utc >= $1 AND e.time_utc < $2" + h_pais.replace("$6", "$3"),
+                    h_args[0], h_args[1], *h_pais_args)
+            last = await ultima_ingesta(db, source)
     except Exception:
         return error_bd()
 
@@ -343,9 +383,9 @@ async def estadisticas(
     media = round(fh["n_hist"] / dias, 3) if fh["n_hist"] > 0 else None   # None (no 0) si el historico no esta cargado
     return {
         "metadata": {
-            "generated": now_ms(), "last_ingestion": last, "mode": "live", "total_eventos": total,
+            "generated": now_ms(), "last_ingestion": last, "mode": source, "total_eventos": total,
             "filters": filtros, "periodo": periodo,
-            "fuente": "evento_actual (ultima version de cada terremoto; las revisiones no se cuentan dos veces)",
+            "fuente": ("REPRODUCCION historica (esquema replay, aislado de los datos en vivo)" if source == "replay" else "evento_actual") + " (ultima version de cada terremoto; las revisiones no se cuentan dos veces)",
             "aviso": "El ultimo periodo puede estar incompleto: USGS publica y revisa eventos con retraso.",
         },
         "por_hora": {"unidad": "terremotos por hora UTC (hora del evento)", "filtros": filtros, "periodo": periodo,
@@ -367,7 +407,7 @@ async def estadisticas(
             "ultimas_24h": fh["ult24"], "ultimas_24h_sin_magnitud": sin_mag_24,
             "historico_total": fh["n_hist"], "media_diaria_historica": media,
             "ratio": round(fh["ult24"] / media, 2) if media else None,
-            "aviso": ("Historico no cargado: no se puede comparar." if media is None else
+            "aviso": ("No aplicable en reproduccion: la comparacion con el historico usa datos en vivo." if source == "replay" else "Historico no cargado: no se puede comparar." if media is None else
                       "La media divide entre %d dias, incluidos los dias con 0 eventos. "
                       "Las ultimas 24 h pueden estar incompletas por retrasos de USGS." % dias),
         },
