@@ -1,0 +1,26 @@
+﻿== 0. Estado inicial: filas de test-E3 en evento_actual (debe ser 0)
+0
+== 1. Parar el consumidor
+consumidor parado
+== 2. Enviar el mensaje sintetico a Kafka MIENTRAS el consumidor esta parado
+enviado test-E3 -> particion 0 offset 6451
+Total enviados: 1
+== 3. Con el consumidor parado, el evento NO debe estar en la base (debe ser 0: el mensaje espera en Kafka)
+0
+== 4. Arrancar el consumidor y esperar 20 segundos
+== 5. Ahora debe aparecer UNA vez: filas en evento_actual y en evento_version (deben ser 1 y 1)
+evento_actual=1
+evento_version=1
+== 6. Reiniciar el consumidor otra vez (debe reanudar desde el ultimo offset confirmado) y esperar 20 segundos
+== 7. Tras el reinicio NO se duplica: deben seguir siendo 1 y 1
+evento_actual=1
+evento_version=1
+== 8. Posicion del consumidor en Kafka (LAG debe ser 0: no queda nada sin procesar)
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                          HOST            CLIENT-ID
+consumidor-live usgs.live       0          6452            6452            0               aiokafka-0.15.0-5e3c9632-ad6c-4131-aff5-ab447196754e /172.18.0.5     aiokafka-0.15.0
+consumidor-live usgs.live       1          6518            6518            0               aiokafka-0.15.0-5e3c9632-ad6c-4131-aff5-ab447196754e /172.18.0.5     aiokafka-0.15.0
+consumidor-live usgs.live       2          6530            6530            0               aiokafka-0.15.0-5e3c9632-ad6c-4131-aff5-ab447196754e /172.18.0.5     aiokafka-0.15.0
+== 9. Limpieza: borrar el evento sintetico (filas borradas: version, actual)
+DELETE 1
+DELETE 1
