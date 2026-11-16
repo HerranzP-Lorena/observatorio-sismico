@@ -305,6 +305,10 @@ Presento qué está **medido** (M), qué está **calculado** a partir de lo medi
 | **Tiempo de desarrollo** | ≈ 15 h | S | Estimación de la autora, **no cronometrada** (puede ser mayor); no se monetiza |
 | **Servicios externos** | 0 € | — | Cuentas gratuitas de ngrok y Netlify, **dentro de sus cuotas**; una cuota gratuita no equivale a coste total cero |
 
+Evidencia de las mediciones de almacenamiento y crecimiento ([`costes_almacenamiento.md`](evidencias/costes_almacenamiento.md)):
+
+![Costes de almacenamiento](img/costes-almacenamiento.png)
+
 Valoración: el coste monetario directo es **despreciable** (del orden de 1 a 5 €/mes de electricidad) porque se usa un equipo ya amortizado; el coste dominante es el **tiempo** de desarrollo y mantenimiento. No estimo un ROI porque el observatorio no tiene un beneficio económico medible que pueda justificar con honestidad.
 
 ### Propuesta de escalado (sin contratar nada)
@@ -338,7 +342,7 @@ Valoración: el coste monetario directo es **despreciable** (del orden de 1 a 5 
 
 **Funcionamiento continuo.** El sistema estuvo en marcha 25 horas seguidas (del 14 de noviembre a las 18:53 al 15 de noviembre a las 19:39), sin reinicios de servicios ni suspensiones del equipo (registro de eventos de Windows, Id 42 y 107: «ninguna»), con `api`, `kafka` y `postgres` en estado `healthy` y la API respondiendo a través del túnel. Para ello el portátil se dejó enchufado, con la suspensión y la hibernación desactivadas y las actualizaciones de Windows pausadas.
 
-Pruebas adicionales: la API responde **503** explícito si falla la base de datos y se recupera sola ([captura](img/api-salud-503-y-recuperacion.png)); el panel funciona desde un móvil con datos móviles (`netlify-movil-datos-moviles1/2/3.jpeg`); y CORS estaba mal configurado al principio y se corrigió con el origen exacto de Netlify ([captura del error](img/netlify-error-cors.png)).
+Pruebas adicionales: la API responde **503** explícito si falla la base de datos y se recupera sola ([captura](img/api-salud-503-y-recuperacion.png)); el panel funciona desde un móvil con datos móviles (capturas [1](img/netlify-movil-datos-moviles1.jpeg), [2](img/netlify-movil-datos-moviles2.jpeg) y [3](img/netlify-movil-datos-moviles3.jpeg)); y CORS estaba mal configurado al principio y se corrigió con el origen exacto de Netlify ([captura del error](img/netlify-error-cors.png)).
 
 Nota sobre la prueba de reglas de versiones en SQL (`prueba-reglas-version-sql.png`): **reproduce la regla en SQL**; la prueba con el consumidor real es la de `pruebas_basicas.txt` y la de la reproducción.
 
