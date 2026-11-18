@@ -7,7 +7,7 @@ Sistema de Big Data que recoge terremotos de USGS, los procesa con **Kafka** y *
 | | |
 |---|---|
 | **Panel (Netlify)** | https://grand-daffodil-bb905c.netlify.app/ |
-| **Vídeo de la explicación** | *(enlace pendiente de añadir)* |
+| **Vídeo de la explicación** | [Ver el vídeo en YouTube](https://youtu.be/GV37aoBFH1g) |
 | **Memoria** | [`docs/memoria.md`](docs/memoria.md) |
 | **Modelo de datos, diccionario y procedencia** | [`docs/modelo-datos.md`](docs/modelo-datos.md) |
 
