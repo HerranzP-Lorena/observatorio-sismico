@@ -1,6 +1,6 @@
 Ids en USGS: 186   Ids en la base: 192
 
-Diferencias (=> solo en tu base, <= solo en USGS):
+Diferencias (=> solo en la base, <= solo en USGS):
 
 InputObject   SideIndicator
 -----------   -------------
@@ -13,7 +13,7 @@ us7000tyf6    =>
 
 
 
-Detalle de los eventos que solo estan en tu base:
+Detalle de los eventos que solo estan en la base:
    event_id    |          time_utc          |        updated_utc         | mag  |                       place                       |          ingested_at          
 ---------------+----------------------------+----------------------------+------+---------------------------------------------------+-------------------------------
  uw714139301   | 2026-11-14 23:22:10.59+00  | 2026-11-14 23:38:46.849+00 | 3.14 | 56 km WSW of Pistol River, Oregon                 | 2026-11-14 23:39:41.111765+00

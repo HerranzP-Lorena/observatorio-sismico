@@ -90,7 +90,7 @@ Variables (`.env.example`):
 | Variable | Significado |
 |---|---|
 | `POSTGRES_USER` | Usuario de PostgreSQL (`sismo`) |
-| `POSTGRES_PASSWORD` | Contraseña (**cámbiala**; el valor de ejemplo no es real) |
+| `POSTGRES_PASSWORD` | Contraseña de PostgreSQL (el valor de `.env.example` es solo un ejemplo) |
 | `POSTGRES_DB` | Base de datos (`sismologia`) |
 
 Los datos persisten en dos volúmenes (`pgdata` y `kafka-data`). `docker compose down` **conserva** los datos; `docker compose down -v` los **borra**.
@@ -112,10 +112,10 @@ Respuesta esperada: `{"status":"ok","database":"ok",...}`. La documentación int
 El panel (Netlify) se conecta a la API a través de un túnel HTTPS de **ngrok** que apunta al puerto 8000 del equipo.
 
 ```powershell
-# Una sola vez: guardar tu authtoken de ngrok en TU equipo (es una contraseña: nunca en Git ni en Angular)
-ngrok config add-authtoken <TU_TOKEN>
+# Guardar el authtoken de ngrok en el equipo (es una contraseña: no se sube a Git ni se usa en Angular)
+ngrok config add-authtoken <TOKEN>
 
-# Abrir el túnel (dominio estático de mi cuenta; el tuyo será otro)
+# Abrir el túnel (dominio estático de la cuenta de ngrok del proyecto)
 ngrok http 8000 --url https://dallying-shimmer-plot.ngrok-free.dev
 ```
 
